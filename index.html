@@ -1,0 +1,61 @@
+
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SAFE টিভি</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    body { background-color: #000; color: #fff; font-family: sans-serif; margin: 0; }
+    #channelList li { cursor: pointer; margin: 10px; }
+    video { width: 100%; height: auto; background: #000; }
+  </style>
+</head>
+<body>
+  <h1 style="text-align:center;">SAFE টিভি লাইভ</h1>
+  <video id="videoPlayer" controls autoplay></video>
+  <ul id="channelList"></ul>
+
+  <script>
+    async function loadChannelsFromAPI() {
+        try {
+            const res = await fetch('/.netlify/functions/get-channels');
+            const channels = await res.json();
+            renderChannels(channels);
+        } catch (e) {
+            console.error('Error loading channels:', e);
+        }
+    }
+
+    function renderChannels(channels) {
+        const list = document.getElementById('channelList');
+        list.innerHTML = '';
+        channels.forEach(channel => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <img src="\${channel.logo_url}" width="40" /> 
+                <strong>\${channel.name_bn}</strong> / \${channel.name_en}
+            `;
+            li.onclick = () => playStream(channel.stream_url);
+            list.appendChild(li);
+        });
+    }
+
+    function playStream(url) {
+        const video = document.getElementById('videoPlayer');
+        if (Hls.isSupported()) {
+            const hls = new Hls();
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+        } else {
+            video.src = url;
+            video.play();
+        }
+    }
+
+    loadChannelsFromAPI();
+  </script>
+</body>
+</html>
