@@ -1,0 +1,657 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SAFE টিভি</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #fff;
+            overflow-x: hidden;
+            transition: background-color 0.3s;
+        }
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 0;
+        }
+        h1 {
+            font-size: 24px;
+            text-align: center;
+            margin: 5px 0;
+            color: #fff;
+        }
+        .ad-container {
+            text-align: center;
+            margin: 5px 0;
+            padding: 5px;
+            background: rgba(44, 44, 44, 0.9);
+            opacity: 0;
+            transition: opacity 0.5s;
+            height: 0;
+            overflow: hidden;
+        }
+        .ad-container.active {
+            opacity: 1;
+            height: auto;
+        }
+        .video-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            background-color: #000;
+        }
+        #videoPlayer {
+            width: 100%;
+            height: 100%;
+            border: none;
+            object-fit: contain;
+        }
+        .controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .controls button {
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 18px;
+            margin: 0 3px;
+            cursor: pointer;
+            transition: color 0.3s;
+            pointer-events: auto;
+        }
+        .controls button:hover {
+            color: #007bff;
+        }
+        .controls input[type="range"] {
+            width: 80px;
+            margin: 0 5px;
+            pointer-events: auto;
+        }
+        .time-display {
+            font-size: 12px;
+            margin: 0 5px;
+            pointer-events: none;
+        }
+        .progress-bar {
+            position: absolute;
+            bottom: 40px;
+            left: 10px;
+            right: 10px;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+        }
+        .progress {
+            height: 100%;
+            background: #007bff;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+        .video-container:hover .controls {
+            opacity: 1;
+        }
+        .channel-name {
+            position: absolute;
+            bottom: 50px;
+            left: 10px;
+            font-size: 14px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 3px 8px;
+            border-radius: 5px;
+        }
+        .channel-list {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: rgba(44, 44, 44, 0.9);
+            padding: 5px 0;
+            overflow-x: auto;
+            white-space: nowrap;
+            transform: translateY(100%);
+            transition: transform 0.3s;
+        }
+        .channel-list.active {
+            transform: translateY(0);
+        }
+        .channel-list h2 {
+            font-size: 16px;
+            margin: 0 10px 5px;
+            color: #fff;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .channel-list ul {
+            list-style: none;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+        }
+        .channel-list li {
+            display: inline-flex;
+            align-items: center;
+            padding: 5px;
+            background-color: #2c2c2c;
+            border-radius: 5px;
+            margin: 0 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .channel-list li:hover {
+            background-color: #444;
+        }
+        .channel-logo {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            margin-right: 5px;
+            object-fit: cover;
+        }
+        .channel-info {
+            display: flex;
+            flex-direction: column;
+        }
+        .channel-name-bn {
+            font-size: 12px;
+            font-weight: bold;
+            color: #fff;
+        }
+        .channel-name-en {
+            font-size: 8px;
+            color: #bbb;
+        }
+        .chat-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 200px;
+            height: 200px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 5px;
+            overflow-y: auto;
+            display: none;
+        }
+        .chat-container.active {
+            display: block;
+        }
+        #chatInput {
+            width: 80%;
+            margin: 5px;
+            padding: 2px;
+        }
+        .theme-toggle {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: none;
+            border: none;
+            color: #fff;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .support-form {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(44, 44, 44, 0.9);
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        .support-form.active {
+            display: block;
+        }
+        .support-form h3 {
+            font-size: 16px;
+            margin: 0 0 5px;
+        }
+        .support-form input, .support-form textarea {
+            width: 100%;
+            margin: 5px 0;
+            padding: 3px;
+            background: #333;
+            border: 1px solid #555;
+            color: #fff;
+        }
+        .support-form button {
+            background: #007bff;
+            border: none;
+            padding: 5px 10px;
+            color: #fff;
+            cursor: pointer;
+        }
+        .whatsapp-support {
+            position: fixed;
+            bottom: 60px;
+            right: 10px;
+            background: #25D366;
+            border: none;
+            padding: 10px 15px;
+            color: #fff;
+            font-size: 16px;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        }
+        .copyright {
+            text-align: center;
+            font-size: 12px;
+            margin-top: 10px;
+            color: #bbb;
+        }
+        @media (max-width: 360px) {
+            .video-container {
+                height: 100vh;
+            }
+            .controls {
+                padding: 3px;
+            }
+            .controls button {
+                font-size: 14px;
+                margin: 0 2px;
+            }
+            .controls input[type="range"] {
+                width: 60px;
+            }
+            .time-display {
+                font-size: 10px;
+                margin: 0 3px;
+            }
+            .channel-name {
+                font-size: 12px;
+                bottom: 40px;
+            }
+            .channel-list {
+                padding: 3px 0;
+            }
+            .channel-list li {
+                margin: 0 3px;
+                padding: 3px;
+            }
+            .channel-logo {
+                width: 25px;
+                height: 25px;
+            }
+            .channel-name-bn {
+                font-size: 10px;
+            }
+            .channel-name-en {
+                font-size: 6px;
+            }
+            .ad-container {
+                padding: 3px;
+            }
+            .chat-container {
+                width: 150px;
+                height: 150px;
+            }
+            .support-form {
+                padding: 5px;
+            }
+            .whatsapp-support {
+                bottom: 50px;
+                padding: 8px 12px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SAFE টিভি</h1>
+        <div class="ad-container" id="adContainer">
+            <!-- বিজ্ঞাপন স্ক্রিপ্ট ডায়নামিকভাবে ইনজেক্ট হবে -->
+        </div>
+        <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
+        <div class="video-container">
+            <video id="videoPlayer" autoplay></video>
+            <div class="progress-bar">
+                <div class="progress" id="progress"></div>
+            </div>
+            <div class="controls">
+                <div class="left-controls">
+                    <button id="rewindBtn" title="Rewind">⏪</button>
+                    <button id="playPauseBtn" title="Play/Pause">▶</button>
+                    <button id="forwardBtn" title="Forward">⏩</button>
+                </div>
+                <div class="time-display" id="timeDisplay">0:00 / 0:00</div>
+                <div class="right-controls">
+                    <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1">
+                    <button id="fullscreenBtn" title="Toggle Fullscreen">⛶</button>
+                </div>
+            </div>
+            <div class="channel-name" id="channelName"></div>
+        </div>
+        <div class="channel-list" id="channelListContainer">
+            <h2>চ্যানেল তালিকা</h2>
+            <ul id="channelList"></ul>
+        </div>
+        <div class="chat-container" id="chatContainer">
+            <div id="chatMessages"></div>
+            <input type="text" id="chatInput" placeholder="মেসেজ লিখুন...">
+            <button onclick="sendMessage()">পাঠান</button>
+        </div>
+        <div class="support-form" id="supportForm">
+            <h3>সাপোর্টের জন্য যোগাযোগ</h3>
+            <input type="text" id="supportName" placeholder="আপনার নাম" required>
+            <input type="email" id="supportEmail" placeholder="আপনার ইমেইল" required>
+            <textarea id="supportMessage" placeholder="আপনার সমস্যা বা প্রশ্ন" rows="3" required></textarea>
+            <button onclick="submitSupport()">জমা দিন</button>
+        </div>
+        <button class="whatsapp-support" onclick="openWhatsApp()">💬</button>
+    </div>
+    <div class="copyright">© 2025 SAFE টিভি - অথরাইজ বাই (6Team)</div>
+
+    <script>
+        // প্রিসেট চ্যানেলের তালিকা
+        const presetChannels = [
+            { nameBn: "টি স্পোর্টস", nameEn: "T Sports", url: "http://38.96.178.201/live/TSports/tracks-v1a1/mono.m3u8", logo: "https://raw.githubusercontent.com/subirkumarpaul/Logo/main/T%20Sports.png" },
+            { nameBn: "দীপ্ত টিভি", nameEn: "Deepto TV", url: "https://byphdgllyk.gpcdn.net/hls/deeptotv/index.m3u8", logo: "https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Deepto%20TV.jpeg" },
+            { nameBn: "পিস টিভি ইংলিশ", nameEn: "Peace TV English", url: "https://dzkyvlfyge.erbvr.com/PeaceTvEnglish/index.m3u8", logo: "https://i.ibb.co/598TYnC/20240827-092020.png" },
+            { nameBn: "আনন্দ টিভি", nameEn: "Ananda TV", url: "https://amg01448-samsungin-abpananda-samsungin-ad-pw.amagi.tv/playlist/amg01448-samsungin-abpananda-samsungin/playlist.m3u8", logo: "https://i.postimg.cc/t7Gn9VtZ/abpananda.png" },
+            { nameBn: "মুভি বাংলা", nameEn: "Movie Bangla", url: "http://alvetv.com/moviebanglatv/8080/index.m3u8", logo: "https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Movie%20Bangla.png" },
+            { nameBn: "নিউজ১৮ বাংলা", nameEn: "News18 Bangla", url: "https://amg01448-samsungin-news18bangla-samsungin-ad-qy.amagi.tv/playlist/amg01448-samsungin-news18bangla-samsungin/playlist.m3u8", logo: "https://jio.dinesh29.com.np/smart/ardinesh/logos/news18-bangla-news.png" },
+            { nameBn: "বৈশাখী টিভি", nameEn: "Boishakhi TV", url: "https://boishakhi.sonarbanglatv.com/boishakhi/boishakhitv/index.m3u8", logo: "https://raw.githubusercontent.com/subirkumarpaul/Logo/main/Boishaki%20TV.png" },
+            { nameBn: "সময় টিভি", nameEn: "Somoy TV", url: "https://d1e7rcqq4o2ma.cloudfront.net/bpk-tv/1702/output/master.m3u8", logo: "https://via.placeholder.com/80" },
+        ];
+
+        // চ্যানেল তালিকা রেন্ডার করা
+        const channelList = document.getElementById('channelList');
+        const channelListContainer = document.getElementById('channelListContainer');
+        let currentChannelIndex = 0;
+        let isPlaying = false;
+        let isDarkMode = true;
+
+        presetChannels.forEach((channel, index) => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <img src="${channel.logo}" alt="${channel.nameEn}" class="channel-logo">
+                <div class="channel-info">
+                    <span class="channel-name-bn">${channel.nameBn}</span>
+                    <span class="channel-name-en">${channel.nameEn}</span>
+                </div>
+            `;
+            li.onclick = () => {
+                currentChannelIndex = index;
+                loadStream(channel.url, channel.nameBn);
+                channelListContainer.classList.remove('active');
+            };
+            channelList.appendChild(li);
+        });
+
+        // চ্যানেল তালিকা টগল
+        document.addEventListener('click', (e) => {
+            if (!channelListContainer.contains(e.target) && e.target !== channelListContainer) {
+                channelListContainer.classList.remove('active');
+            }
+        });
+        channelListContainer.addEventListener('click', (e) => {
+            channelListContainer.classList.toggle('active');
+        });
+
+        // ভিডিও প্লেয়ার এবং কন্ট্রোলস
+        const video = document.getElementById('videoPlayer');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const rewindBtn = document.getElementById('rewindBtn');
+        const forwardBtn = document.getElementById('forwardBtn');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const channelName = document.getElementById('channelName');
+        const progress = document.getElementById('progress');
+        const chatContainer = document.getElementById('chatContainer');
+        const chatMessages = document.getElementById('chatMessages');
+        const chatInput = document.getElementById('chatInput');
+        const supportForm = document.getElementById('supportForm');
+        const adContainer = document.getElementById('adContainer');
+
+        // HLS.js দিয়ে স্ট্রিম লোড করা
+        function loadStream(url, name) {
+            channelName.textContent = name || "চ্যানেল";
+            if (Hls.isSupported()) {
+                const hls = new Hls();
+                hls.loadSource(url);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch(() => {
+                        alert('ভিডিওটি চালাতে "প্লে" বোতামে ক্লিক করুন।');
+                    });
+                    // চ্যানেল লোড হওয়ার পর বিজ্ঞাপন লোড
+                    loadAd();
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = url;
+                video.play().catch(() => {
+                    alert('ভিডিওটি চালাতে "প্লে" বোতামে ক্লিক করুন।');
+                });
+                loadAd();
+            } else {
+                alert('এই ব্রাউজার HLS স্ট্রিমিং সমর্থন করে না।');
+            }
+        }
+
+        // নিরাপদ ভিডিও প্লে
+        function playVideoSafely() {
+            if (video.paused) {
+                video.play().then(() => {
+                    isPlaying = true;
+                    playPauseBtn.textContent = '⏸';
+                    updateTimeDisplay();
+                }).catch(error => {
+                    console.warn('Play interrupted:', error.message);
+                    alert('ভিডিওটি চালাতে "প্লে" বোতামে ক্লিক করুন।');
+                });
+            } else {
+                video.pause();
+                isPlaying = false;
+                playPauseBtn.textContent = '▶';
+            }
+        }
+
+        // ফুলস্ক্রিন টগল
+        function toggleFullscreenSafely() {
+            if (video.requestFullscreen && document.fullscreenEnabled) {
+                if (!document.fullscreenElement) {
+                    video.requestFullscreen().catch(err => {
+                        console.warn('Fullscreen request blocked:', err.message);
+                    });
+                } else {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        // সময় আপডেট
+        function updateTimeDisplay() {
+            video.addEventListener('timeupdate', () => {
+                const currentTime = Math.floor(video.currentTime);
+                const duration = Math.floor(video.duration);
+                timeDisplay.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`;
+                progress.style.width = (currentTime / duration * 100) + '%';
+            });
+        }
+
+        // সময় ফরম্যাট
+        function formatTime(seconds) {
+            if (isNaN(seconds)) return "0:00";
+            const minutes = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+
+        // প্লে/পজ টগল
+        playPauseBtn.addEventListener('click', playVideoSafely);
+
+        // রিওয়াইন্ড
+        rewindBtn.addEventListener('click', () => {
+            video.currentTime = Math.max(0, video.currentTime - 10);
+        });
+
+        // ফরোয়ার্ড
+        forwardBtn.addEventListener('click', () => {
+            video.currentTime = Math.min(video.duration, video.currentTime + 10);
+        });
+
+        // ভলিউম কন্ট্রোল
+        volumeSlider.addEventListener('input', () => {
+            video.volume = volumeSlider.value;
+        });
+
+        // ফুলস্ক্রিন টগল
+        fullscreenBtn.addEventListener('click', toggleFullscreenSafely);
+
+        // প্রোগ্রেস বার কন্ট্রোল
+        const progressBar = document.querySelector('.progress-bar');
+        progressBar.addEventListener('click', (e) => {
+            const rect = progressBar.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const width = rect.width;
+            const newTime = (clickX / width) * video.duration;
+            video.currentTime = newTime;
+        });
+
+        // থিম টগল
+        function toggleTheme() {
+            isDarkMode = !isDarkMode;
+            document.body.style.backgroundColor = isDarkMode ? '#1a1a1a' : '#f0f0f0';
+            document.querySelectorAll('.channel-list, .ad-container, .controls, .channel-name, .support-form').forEach(el => {
+                el.style.backgroundColor = isDarkMode ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.7)';
+            });
+            document.querySelectorAll('.channel-name-bn, .channel-name-en, .time-display').forEach(el => {
+                el.style.color = isDarkMode ? '#fff' : '#000';
+            });
+        }
+
+        // চ্যাট ফাংশন
+        function sendMessage() {
+            const message = chatInput.value.trim();
+            if (message) {
+                const p = document.createElement('p');
+                p.textContent = message;
+                chatMessages.appendChild(p);
+                chatInput.value = '';
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // চ্যাট টগল
+        document.addEventListener('click', (e) => {
+            if (e.target === chatContainer || chatContainer.contains(e.target)) {
+                chatContainer.classList.toggle('active');
+            } else if (!chatContainer.classList.contains('active')) {
+                chatContainer.classList.remove('active');
+            }
+        });
+
+        // সাপোর্ট ফর্ম টগল
+        supportForm.addEventListener('click', (e) => {
+            supportForm.classList.toggle('active');
+        });
+        document.addEventListener('click', (e) => {
+            if (!supportForm.contains(e.target)) {
+                supportForm.classList.remove('active');
+            }
+        });
+
+        // সাপোর্ট ফর্ম জমা
+        function submitSupport() {
+            const name = document.getElementById('supportName').value;
+            const email = document.getElementById('supportEmail').value;
+            const message = document.getElementById('supportMessage').value;
+            if (name && email && message) {
+                const subject = encodeURIComponent('সাপোর্ট রিকোয়েস্ট - SAFE টিভি');
+                const body = encodeURIComponent(`নাম: ${name}\nইমেইল: ${email}\nসমস্যা:\n${message}`);
+                window.location.href = `mailto:rafi.privateoffice@gmail.com?subject=${subject}&body=${body}`;
+                alert('আপনার রিকোয়েস্টটি ইমেইলে জমা দেওয়া হয়েছে।');
+                supportForm.classList.remove('active');
+            } else {
+                alert('সব ফিল্ড পূরণ করুন!');
+            }
+        }
+
+        // হোয়াটসঅ্যাপ ওপেন
+        function openWhatsApp() {
+            const phoneNumber = '+8801747870948';
+            const message = encodeURIComponent('SAFE টিভি-তে সাহায্য প্রয়োজন!');
+            window.open(`https://wa.me/${phoneNumber}?text=${message}`, '_blank');
+        }
+
+        // বিজ্ঞাপন লোড ফাংশন
+        function loadAd() {
+            const adScript = document.createElement('script');
+            adScript.async = true;
+            adScript.src = '//pl26682080.profitableratecpm.com/14534b9a47e6217ddfccb0d86ffbe80c/invoke.js';
+            const adDiv = document.createElement('div');
+            adDiv.id = 'container-14534b9a47e6217ddfccb0d86ffbe80c';
+            adContainer.appendChild(adDiv);
+            adContainer.appendChild(adScript);
+            adContainer.classList.add('active');
+        }
+
+        // পেজ লোডে প্রথম চ্যানেল লোড
+        if (presetChannels.length > 0) {
+            loadStream(presetChannels[0].url, presetChannels[0].nameBn);
+        }
+    </script>
+</body>
+</html>
